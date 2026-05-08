@@ -1,30 +1,23 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Redirect } from 'expo-router';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
-export default function Home() {
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Brainrot Learning</Text>
-      <Text style={styles.subtitle}>Phase 0 scaffolding ready.</Text>
-    </View>
-  );
+import { useAuth } from '../src/auth/AuthContext';
+
+export default function Index() {
+  const { status } = useAuth();
+
+  if (status === 'loading') {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator color="#fff" />
+      </View>
+    );
+  }
+
+  if (status === 'authenticated') return <Redirect href="/home" />;
+  return <Redirect href="/welcome" />;
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#000',
-    padding: 24,
-  },
-  title: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  subtitle: {
-    color: '#bbb',
-    fontSize: 16,
-  },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' },
 });
