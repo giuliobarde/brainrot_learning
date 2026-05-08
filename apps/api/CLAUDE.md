@@ -98,6 +98,20 @@ curl http://localhost:4000/healthz  # → { data: { status: 'ok', mongo: { statu
 - `authRateLimiter` ([src/middleware/rateLimit.ts](src/middleware/rateLimit.ts)) caps `/auth/register|login|refresh` at 20/15min in non-test envs. Skipped in `NODE_ENV=test` so suites can hammer endpoints.
 - Protected routes wrap with `requireAuth`. Read user with `(req as AuthedRequest).userId`.
 
+## Source-material upload (Phase 3)
+
+- [src/lib/storage.ts](src/lib/storage.ts): `createLocalStorage(rootDir?)` — local FS driver. Files land at `STORAGE_ROOT/<userId>/<uuid><ext>`. Root resolves lazily via `process.env.STORAGE_ROOT` so tests can swap in a temp dir after config has loaded. Driver interface keeps a future S3 swap one file away.
+- [src/lib/extractors.ts](src/lib/extractors.ts): `extract({ buffer, mimeType, filename })` returns `{ kind, text }`. Detects `pdf|docx|markdown|text` from MIME first, extension second. PDF via `pdf-parse/lib/pdf-parse.js` (skipping the package `index.js` which runs a debug script that crashes in Node). DOCX via `mammoth.extractRawText`. Empty buffers and whitespace-only output map to `AppError(400|422, 'empty_file' | 'extraction_empty' | 'extraction_failed')`.
+- [src/middleware/upload.ts](src/middleware/upload.ts): `multer.memoryStorage()`, 15 MB cap, single file under field `file`. `fileFilter` rejects unsupported MIME/extension as `AppError(415)`.
+- [src/services/sourceMaterialService.ts](src/services/sourceMaterialService.ts): `createSourceMaterialService({ storage? })` exposes `uploadFile`, `uploadInline`, `getById`, `listByOwner`, `deleteById`. Inline path skips storage entirely (no original file to keep). All read paths enforce `ownerId` ownership and `404` on miss.
+- Routes ([src/routes/sourceMaterialRoutes.ts](src/routes/sourceMaterialRoutes.ts)) all sit behind `requireAuth`:
+  - `POST /source-material` — multipart `file` **or** JSON `{ text, filename? }`.
+  - `GET /source-material` — caller's listing (preview + counts only).
+  - `GET /source-material/:id` — full record including `extractedText`.
+  - `DELETE /source-material/:id` — removes record + storage best-effort.
+- **Phase 4 hook:** `scriptService.generateFromSource({ sourceMaterialId, ownerId, ... })` loads the doc, enforces ownership, and forwards `extractedText` into `generate()`. Returns the same shape as `generate()` plus `sourceMaterialId`.
+- Tests: [tests/lib/extractors.test.ts](tests/lib/extractors.test.ts) (7) covers detection + parse failures; [tests/sourceMaterial.test.ts](tests/sourceMaterial.test.ts) (9) covers route auth, multipart upload to disk, ownership enforcement, delete, and the Phase 3↔4 integration with a stubbed HF client.
+
 ## AI script generation (Phase 4)
 
 - [src/lib/huggingFace.ts](src/lib/huggingFace.ts): `createHuggingFaceClient({ token, baseUrl, fetchImpl })` — thin wrapper around the HF chat-completions router (`https://router.huggingface.co/v1/chat/completions`). Accepts a `fetchImpl` so tests can mock without touching globals. Errors map to `AppError` with code `huggingface_*`.
@@ -114,4 +128,5 @@ curl http://localhost:4000/healthz  # → { data: { status: 'ok', mongo: { statu
 
 Phase 1 complete: skeleton + models + indexes + `/healthz` + integration tests.
 Phase 2 complete: auth endpoints, rotating refresh tokens with theft detection, rate limiting, integration tests covering the full flow.
-Phase 4 complete: HF chat client, script-generator service with retry/validation, prompt templates, mocked unit tests. Phase 3 (source-material upload) and Phase 5 (TTS voice synthesis) still open — see [../../implementation_plan.md](../../implementation_plan.md).
+Phase 3 complete: multipart + inline upload pipeline, txt/md/pdf/docx extractors, local FS storage with S3-shaped driver, list/get/delete endpoints. Wired into Phase 4 via `scriptService.generateFromSource`.
+Phase 4 complete: HF chat client, script-generator service with retry/validation, prompt templates, mocked unit tests. Phase 5 (TTS voice synthesis) is next — see [../../implementation_plan.md](../../implementation_plan.md).

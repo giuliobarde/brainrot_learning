@@ -1,6 +1,7 @@
+import type { Types } from 'mongoose';
 import { z } from 'zod';
 
-import { AppError } from '../lib/errors';
+import { AppError, NotFound } from '../lib/errors';
 import {
   createHuggingFaceClient,
   type ChatResponse,
@@ -8,6 +9,7 @@ import {
 } from '../lib/huggingFace';
 import { logger } from '../lib/logger';
 import { slugify } from '../lib/slug';
+import { sourceMaterialRepository } from '../repositories/sourceMaterialRepository';
 
 import {
   buildScriptPrompt,
@@ -30,6 +32,15 @@ export type ScriptResponse = z.infer<typeof ScriptResponseSchema>;
 
 export interface GenerateScriptInput {
   sourceText: string;
+  topicHint?: string;
+  tone?: Tone;
+  length?: LengthPreset;
+  model?: string;
+}
+
+export interface GenerateFromSourceInput {
+  sourceMaterialId: string | Types.ObjectId;
+  ownerId: string | Types.ObjectId;
   topicHint?: string;
   tone?: Tone;
   length?: LengthPreset;
@@ -153,7 +164,24 @@ export function createScriptService(deps: ScriptServiceDeps = {}) {
       : new AppError(502, 'script_generation_failed', 'failed to generate a valid script');
   }
 
-  return { generate };
+  async function generateFromSource(
+    input: GenerateFromSourceInput,
+  ): Promise<GenerateScriptResult & { sourceMaterialId: string }> {
+    const doc = await sourceMaterialRepository.findById(input.sourceMaterialId);
+    if (!doc || String(doc.ownerId) !== String(input.ownerId)) {
+      throw NotFound('source material', String(input.sourceMaterialId));
+    }
+    const result = await generate({
+      sourceText: doc.extractedText,
+      topicHint: input.topicHint,
+      tone: input.tone,
+      length: input.length,
+      model: input.model,
+    });
+    return { ...result, sourceMaterialId: doc.id };
+  }
+
+  return { generate, generateFromSource };
 }
 
 export type ScriptService = ReturnType<typeof createScriptService>;

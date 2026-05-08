@@ -117,6 +117,50 @@ async function tryRefresh(): Promise<boolean> {
   return refreshInFlight;
 }
 
+export interface ApiSourceMaterial {
+  id: string;
+  kind: string;
+  originalFilename?: string;
+  mimeType?: string;
+  charCount: number;
+  preview: string;
+  createdAt: string;
+  updatedAt: string;
+  extractedText?: string;
+}
+
+interface UploadFile {
+  uri: string;
+  name: string;
+  mimeType: string;
+}
+
+async function postMultipart<T>(path: string, file: UploadFile): Promise<T> {
+  const tokens = await readTokens();
+  const form = new FormData();
+  form.append('file', {
+    uri: file.uri,
+    name: file.name,
+    type: file.mimeType,
+  } as unknown as Blob);
+
+  const headers: Record<string, string> = {};
+  if (tokens) headers.authorization = `Bearer ${tokens.accessToken}`;
+
+  const res = await fetch(`${getApiBaseUrl()}${path}`, {
+    method: 'POST',
+    headers,
+    body: form as unknown as BodyInit,
+  });
+  const text = await res.text();
+  const json = text.length > 0 ? (JSON.parse(text) as { data?: T; error?: ApiErrorBody }) : {};
+  if (!res.ok) {
+    const err = json.error ?? { code: 'unknown', message: `upload failed (${res.status})` };
+    throw new ApiError(res.status, err);
+  }
+  return json.data as T;
+}
+
 export const api = {
   async register(input: {
     email: string;
@@ -165,5 +209,31 @@ export const api = {
   },
   async clearLocalSession(): Promise<void> {
     await clearTokens();
+  },
+  async uploadSourceFile(file: UploadFile): Promise<{ sourceMaterial: ApiSourceMaterial }> {
+    return postMultipart<{ sourceMaterial: ApiSourceMaterial }>('/source-material', file);
+  },
+  async uploadSourceText(input: {
+    text: string;
+    filename?: string;
+  }): Promise<{ sourceMaterial: ApiSourceMaterial }> {
+    return rawRequest<{ sourceMaterial: ApiSourceMaterial }>('/source-material', {
+      method: 'POST',
+      body: input,
+      auth: true,
+    });
+  },
+  async listSourceMaterial(): Promise<{ sourceMaterials: ApiSourceMaterial[] }> {
+    return rawRequest<{ sourceMaterials: ApiSourceMaterial[] }>('/source-material', {
+      auth: true,
+    });
+  },
+  async getSourceMaterial(id: string): Promise<{ sourceMaterial: ApiSourceMaterial }> {
+    return rawRequest<{ sourceMaterial: ApiSourceMaterial }>(`/source-material/${id}`, {
+      auth: true,
+    });
+  },
+  async deleteSourceMaterial(id: string): Promise<void> {
+    await rawRequest<void>(`/source-material/${id}`, { method: 'DELETE', auth: true });
   },
 };

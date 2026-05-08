@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 
 import { authRoutes } from './authRoutes';
 import { healthRoutes } from './healthRoutes';
+import { sourceMaterialRoutes } from './sourceMaterialRoutes';
 
 export function buildRouter(): Router {
   const router = Router();
@@ -12,6 +13,7 @@ export function buildRouter(): Router {
 
   router.use(healthRoutes);
   router.use(authRoutes);
+  router.use(sourceMaterialRoutes);
 
   return router;
 }

@@ -34,6 +34,12 @@ src/
 
 `getApiBaseUrl()` resolves in order: `EXPO_PUBLIC_API_URL` → Expo dev `hostUri` (LAN IP, port 4000) → `localhost:4000`. Set `EXPO_PUBLIC_API_URL` in [.env](../../.env) when running on a physical device against an API on a different host.
 
+## Source-material upload (Phase 3)
+
+- `app/upload.tsx` — two-tab screen (paste text / pick file). File picker uses `expo-document-picker` and limits to `text/plain`, `text/markdown`, `application/pdf`, and DOCX MIME types. Uploads via `api.uploadSourceFile()` (multipart) or `api.uploadSourceText()` (JSON).
+- `app/library.tsx` — `FlatList` of the user's uploads. Pull-to-refresh + delete confirmation. Backed by `api.listSourceMaterial()` / `api.deleteSourceMaterial()`.
+- The home screen now links to both. Counts as the Phase 3 visible thread until Phase 7 wires `/videos/generate`.
+
 ## Conventions
 
 - TypeScript strict mode via [packages/config/tsconfig.react-native.json](../../packages/config/tsconfig.react-native.json).
