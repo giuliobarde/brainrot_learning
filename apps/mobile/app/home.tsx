@@ -44,6 +44,15 @@ export default function Home() {
         <Text style={styles.cardBody}>{healthLine}</Text>
       </View>
 
+      <View style={styles.actions}>
+        <Pressable style={styles.primary} onPress={() => router.push('/upload')}>
+          <Text style={styles.primaryText}>Upload material</Text>
+        </Pressable>
+        <Pressable style={styles.secondary} onPress={() => router.push('/library')}>
+          <Text style={styles.secondaryText}>My library</Text>
+        </Pressable>
+      </View>
+
       <Pressable style={styles.logout} onPress={() => void signOut()}>
         <Text style={styles.logoutText}>Sign out</Text>
       </Pressable>
@@ -65,6 +74,22 @@ const styles = StyleSheet.create({
   },
   cardTitle: { color: '#a3a3a3', fontSize: 13 },
   cardBody: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  actions: { gap: 12 },
+  primary: {
+    backgroundColor: '#fff',
+    paddingVertical: 14,
+    borderRadius: 16,
+    alignItems: 'center',
+  },
+  primaryText: { color: '#000', fontSize: 16, fontWeight: '700' },
+  secondary: {
+    paddingVertical: 14,
+    borderRadius: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  secondaryText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   logout: {
     paddingVertical: 14,
     borderRadius: 16,
