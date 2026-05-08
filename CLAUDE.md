@@ -43,12 +43,8 @@ implementation_plan.md   Phased plan, Phase 0 → Phase 11
 | `npm run db:up` / `db:down`       | Start/stop MongoDB container                              |
 | `npm run typecheck`               | TypeScript across every workspace                         |
 | `npm run test`                    | Vitest in `apps/api`; placeholders elsewhere              |
-| `npm run lint` / `lint:fix`       | ESLint (currently broken at root — see Known issues)      |
+| `npm run lint` / `lint:fix`       | ESLint across every workspace                             |
 | `npm run format` / `format:check` | Prettier                                                  |
-
-## Known issues
-
-- **ESLint at root fails to load** (`@eslint/eslintrc` ajv error caused by the `overrides.ajv` pin in root [package.json](package.json)). Investigate before relying on `npm run lint`. Tests and typecheck are unaffected.
 
 ## Conventions
 

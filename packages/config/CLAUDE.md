@@ -15,7 +15,3 @@ Shared ESLint, Prettier, and TypeScript configurations. No runtime code.
 
 - Per-workspace `tsconfig.json` and `.eslintrc.cjs` should **extend** these — do not redefine rules locally unless the workspace genuinely diverges.
 - Loosening a rule in a workspace is a smell; prefer fixing the underlying code or, if the rule is wrong project-wide, change it here once.
-
-## Known issue
-
-- `npm run lint` at the repo root fails with an ajv error inside `@eslint/eslintrc`. Caused by the `overrides.ajv` pin in the root `package.json`. Until that is reconciled, lint cannot run; tests and typecheck still work.

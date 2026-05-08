@@ -52,8 +52,5 @@
     "*.{json,md,yml,yaml}": [
       "prettier --write"
     ]
-  },
-  "overrides": {
-    "ajv": "^8.17.1"
   }
 }
