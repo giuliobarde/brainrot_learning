@@ -1,0 +1,41 @@
+{
+  "name": "@brainrot/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Brainrot Learning backend API.",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint \"src/**/*.{ts,tsx}\"",
+    "lint:fix": "eslint \"src/**/*.{ts,tsx}\" --fix",
+    "test": "echo \"(no tests yet)\" && exit 0",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@brainrot/shared": "*",
+    "cors": "^2.8.6",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "helmet": "^7.2.0",
+    "mongoose": "^8.23.1",
+    "pino": "^9.14.0",
+    "pino-http": "^10.5.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@brainrot/config": "*",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.10",
+    "@types/supertest": "^6.0.3",
+    "mongodb-memory-server": "^10.4.3",
+    "pino-pretty": "^11.3.0",
+    "supertest": "^7.2.2",
+    "tsx": "^4.19.0",
+    "typescript": "~5.3.3",
+    "vitest": "^2.1.9"
+  }
+}

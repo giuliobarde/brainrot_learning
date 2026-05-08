@@ -1,0 +1,18 @@
+{
+  "extends": "@brainrot/config/tsconfig.react-native.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  },
+  "include": [
+    "app/**/*",
+    "src/**/*",
+    "babel.config.js",
+    "app.config.ts",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts"
+  ],
+  "exclude": ["node_modules", ".expo", "dist", "build"]
+}
