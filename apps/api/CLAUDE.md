@@ -98,7 +98,20 @@ curl http://localhost:4000/healthz  # → { data: { status: 'ok', mongo: { statu
 - `authRateLimiter` ([src/middleware/rateLimit.ts](src/middleware/rateLimit.ts)) caps `/auth/register|login|refresh` at 20/15min in non-test envs. Skipped in `NODE_ENV=test` so suites can hammer endpoints.
 - Protected routes wrap with `requireAuth`. Read user with `(req as AuthedRequest).userId`.
 
+## AI script generation (Phase 4)
+
+- [src/lib/huggingFace.ts](src/lib/huggingFace.ts): `createHuggingFaceClient({ token, baseUrl, fetchImpl })` — thin wrapper around the HF chat-completions router (`https://router.huggingface.co/v1/chat/completions`). Accepts a `fetchImpl` so tests can mock without touching globals. Errors map to `AppError` with code `huggingface_*`.
+- [src/services/prompts/scriptPrompt.ts](src/services/prompts/scriptPrompt.ts): system + user prompt builder. `LENGTH_TARGETS` maps `short|medium|long` → `{ seconds, words }` (~150 wpm: 75/150/225).
+- [src/services/scriptService.ts](src/services/scriptService.ts): `createScriptService({ client?, model? })`. `generate({ sourceText, topicHint?, tone?, length?, model? })` returns `{ topic, topicSlug, title, description, tags, script, wordCount, modelId }`.
+  - Forces `response_format: json_object` on the HF call.
+  - Strips `\`\`\`json … \`\`\``fences and falls back to`{…}` slicing before parsing.
+  - Validates output with Zod (`ScriptResponseSchema`).
+  - Retries once at temperature 0.2 with a corrective message threading the prior bad response back into the conversation. Two consecutive failures → `AppError(502)`.
+- Default model: `meta-llama/Meta-Llama-3-8B-Instruct`. Override per-call with `input.model` or per-service with `createScriptService({ model })`.
+- Tests: [tests/services/scriptService.test.ts](tests/services/scriptService.test.ts) covers parse/validate/retry/preset/override paths against a stub client; [tests/lib/huggingFace.test.ts](tests/lib/huggingFace.test.ts) hits the HF wrapper with a mocked `fetch`. No live HF call in any test.
+
 ## Phase status
 
 Phase 1 complete: skeleton + models + indexes + `/healthz` + integration tests.
-Phase 2 complete: auth endpoints, rotating refresh tokens with theft detection, rate limiting, integration tests covering the full flow. Phase 3 (source-material upload) is next — see [../../implementation_plan.md](../../implementation_plan.md).
+Phase 2 complete: auth endpoints, rotating refresh tokens with theft detection, rate limiting, integration tests covering the full flow.
+Phase 4 complete: HF chat client, script-generator service with retry/validation, prompt templates, mocked unit tests. Phase 3 (source-material upload) and Phase 5 (TTS voice synthesis) still open — see [../../implementation_plan.md](../../implementation_plan.md).
