@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { config } from '../config';
 import { Conflict, Unauthorized } from '../lib/errors';
 import { hashPassword, verifyPassword } from '../lib/passwords';
 import {
@@ -8,7 +9,7 @@ import {
   refreshTokenExpiry,
   signAccessToken,
 } from '../lib/tokens';
-import type { UserDoc } from '../models/User';
+import type { UserDoc, UserRole } from '../models/User';
 import { refreshTokenRepository } from '../repositories/refreshTokenRepository';
 import { userRepository } from '../repositories/userRepository';
 
@@ -48,10 +49,17 @@ export const authService = {
     const existing = await userRepository.findByEmail(input.email);
     if (existing) throw Conflict('email already registered');
     const passwordHash = await hashPassword(input.password);
+    const email = input.email.toLowerCase();
+    const role: UserRole = config.adminEmails.includes(email) ? 'admin' : 'user';
     const user = await userRepository.create({
-      email: input.email.toLowerCase(),
+      email,
       passwordHash,
       displayName: input.displayName,
+      role,
+      entitlements: {
+        plan: 'free',
+        generationsRemaining: config.freeTrialGenerations,
+      },
     });
     const tokens = await issueTokens(user);
     return { user, tokens };

@@ -62,5 +62,8 @@ storage/
 uploads/
 generated/
 
+# Piper TTS binary + voice files (downloaded on demand by scripts/install-piper.sh)
+apps/api/.piper/
+
 # Docker volumes (if mounted locally)
 .docker-data/

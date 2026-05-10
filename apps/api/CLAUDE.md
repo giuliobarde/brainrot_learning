@@ -55,14 +55,21 @@ tsconfig.test.json      Typecheck for tests + vitest config (no emit)
 
 ## Domain model
 
-| Entity           | Owner            | Hot indexes                                                                                               |
-| ---------------- | ---------------- | --------------------------------------------------------------------------------------------------------- |
-| `User`           | —                | `email` (unique)                                                                                          |
-| `Topic`          | —                | `slug` (unique)                                                                                           |
-| `SourceMaterial` | `ownerId` (User) | `(ownerId, createdAt desc)`                                                                               |
-| `Video`          | `ownerId` (User) | `(ownerId, topicSlug, createdAt desc)`, `(ownerId, createdAt desc)`, text on `(title, description, tags)` |
+| Entity           | Owner            | Hot indexes                                                                                                                                                                              |
+| ---------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `User`           | —                | `email` (unique), `role`                                                                                                                                                                 |
+| `RefreshToken`   | `userId` (User)  | `tokenHash` (unique), `family`, TTL on `expiresAt`                                                                                                                                       |
+| `Topic`          | —                | `slug` (unique)                                                                                                                                                                          |
+| `SourceMaterial` | `ownerId` (User) | `(ownerId, createdAt desc)`                                                                                                                                                              |
+| `Video`          | `ownerId` (User) | `(ownerId, topicSlug, createdAt desc)`, `(ownerId, createdAt desc)`, `(visibility, topicSlug, publishedAt desc)`, `(visibility, publishedAt desc)`, text on `(title, description, tags)` |
 
 Topics are derived from videos but stored normalized so we can attach styling (color, icon) and avoid scanning the videos collection for every topic listing.
+
+### Roles and entitlements
+
+- `User.role: 'admin' | 'user'` (default `user`). Admins can publish to the public feed and bypass `entitlements` checks. Bootstrap via `config.adminEmails` (comma-separated `ADMIN_EMAILS` env). [authService.register](src/services/authService.ts) auto-promotes at signup if the email is on the list. Use [requireAdmin](src/middleware/requireAdmin.ts) on admin-only routes.
+- `User.entitlements: { plan: 'free' | 'pro', generationsRemaining, currentPeriodEnd? }`. New users start with `plan: 'free'` and `generationsRemaining: config.freeTrialGenerations` (default 3). Phase 7b decrements `generationsRemaining` on private generation. Phase 10.5 swaps in Stripe.
+- `Video.visibility: 'public' | 'private'` (default `private`) + `publishedAt`. Public videos are admin-owned only (enforced at the publish endpoint, Phase 7a). The two `(visibility, …)` indexes back the public feed queries (`/feed`, `/feed?topic=…`).
 
 ## Running locally
 
@@ -97,6 +104,7 @@ curl http://localhost:4000/healthz  # → { data: { status: 'ok', mongo: { statu
 - Passwords hashed with argon2id (`memoryCost: 19_456`, `timeCost: 2`). See [src/lib/passwords.ts](src/lib/passwords.ts).
 - `authRateLimiter` ([src/middleware/rateLimit.ts](src/middleware/rateLimit.ts)) caps `/auth/register|login|refresh` at 20/15min in non-test envs. Skipped in `NODE_ENV=test` so suites can hammer endpoints.
 - Protected routes wrap with `requireAuth`. Read user with `(req as AuthedRequest).userId`.
+- Admin-only routes additionally wrap with [`requireAdmin`](src/middleware/requireAdmin.ts) (loads the user, asserts `role === 'admin'`, throws `Forbidden` otherwise).
 
 ## Source-material upload (Phase 3)
 
@@ -111,6 +119,47 @@ curl http://localhost:4000/healthz  # → { data: { status: 'ok', mongo: { statu
   - `DELETE /source-material/:id` — removes record + storage best-effort.
 - **Phase 4 hook:** `scriptService.generateFromSource({ sourceMaterialId, ownerId, ... })` loads the doc, enforces ownership, and forwards `extractedText` into `generate()`. Returns the same shape as `generate()` plus `sourceMaterialId`.
 - Tests: [tests/lib/extractors.test.ts](tests/lib/extractors.test.ts) (7) covers detection + parse failures; [tests/sourceMaterial.test.ts](tests/sourceMaterial.test.ts) (9) covers route auth, multipart upload to disk, ownership enforcement, delete, and the Phase 3↔4 integration with a stubbed HF client.
+
+## AI voice synthesis (Phase 5)
+
+- [src/lib/tts.ts](src/lib/tts.ts): provider-neutral `TTSClient` interface (`synthesize({ modelId, text, parameters? }) → { audio, contentType }`). All TTS providers implement this — voice service is provider-agnostic.
+- [src/services/voices/voices.ts](src/services/voices/voices.ts): `VOICES` registry maps `VoiceKey` → `{ provider, modelId, charLimit, inputFormat, silenceMs, parameters? }`. Adding a voice = one config entry. Default = `narrator` (piper, `en_US-amy-medium`). Other entries: `narrator-energetic` (same voice, lengthScale 0.85), `narrator-male` (`en_US-ryan-medium`).
+- [src/lib/piperTTS.ts](src/lib/piperTTS.ts): **default TTS client** for dev + ship. `createPiperTTSClient({ binaryPath?, voicesDir? })` spawns piper, pipes text via stdin, captures WAV from stdout. Sets `DYLD_LIBRARY_PATH` / `LD_LIBRARY_PATH` so the macOS release finds the libespeak-ng dylibs we copy in alongside the binary. Free, offline, no quota, no API token. Errors → `AppError(503, 'piper_not_installed' | 'piper_voice_missing')` or `AppError(502, 'piper_failed')`.
+- [scripts/install-piper.sh](scripts/install-piper.sh): downloads the piper binary + the `en_US-amy-medium` voice file under `apps/api/.piper/` and (on macOS) the `libespeak-ng` dylibs from the piper-phonemize tarball. Run once per dev machine. `.piper/` is gitignored. CI should run this script before tests against real audio.
+- [src/lib/huggingFaceTTS.ts](src/lib/huggingFaceTTS.ts): `createHuggingFaceTTSClient({ token, baseUrl, fetchImpl })`. Kept as a fallback `TTSClient` impl. Currently HF's free serverless TTS is dead (404 on every model), so this is a placeholder for when HF reopens an audio-speech endpoint or we point it at a different OpenAI-compatible TTS API. Errors → `AppError(502, 'huggingface_tts_error')`.
+- [src/services/voices/chunker.ts](src/services/voices/chunker.ts): `chunkScript(script, charLimit)` splits on sentence boundaries, falls back to comma boundaries, then to hard slicing for tokens longer than the limit. Each chunk is `<= charLimit`.
+- [src/lib/concurrency.ts](src/lib/concurrency.ts): tiny `pLimit` impl (no deps). Default concurrency in the voice service is 3 — keeps free-tier HF rate limits reasonable.
+- [src/lib/ffmpeg.ts](src/lib/ffmpeg.ts): `createFfmpegCombiner()` uses bundled `@ffmpeg-installer/ffmpeg` + `@ffprobe-installer/ffprobe` binaries (no system ffmpeg required). Filtergraph concatenates each chunk plus an `aevalsrc` silence pad between chunks, resamples to mono 44.1 kHz WAV, and `ffprobe`s the output for duration. The `AudioCombiner` interface is the seam tests stub against.
+- [src/services/voiceService.ts](src/services/voiceService.ts): `createVoiceService({ ttsClient?, combiner?, storageRoot?, concurrency? })`. `synthesize({ script, voice? })`:
+  1. Hash `voiceKey | modelId | script` (sha256). Cache hit → return existing path + sidecar metadata.
+  2. Chunk the script by the voice's `charLimit`.
+  3. Call HF TTS for every chunk under a `pLimit(concurrency)` gate.
+  4. Hand the audio chunks plus `silenceMs` to the combiner. Output lands at `STORAGE_ROOT/voiceovers/<hash>.wav` with a `<hash>.json` sidecar (`{ durationSeconds, modelId, voiceKey, chunkCount, charCount, createdAt }`).
+- Tests:
+  - [tests/services/chunker.test.ts](tests/services/chunker.test.ts) — sentence/comma/hard-slice paths and the empty/single-chunk fast paths.
+  - [tests/lib/concurrency.test.ts](tests/lib/concurrency.test.ts) — peak concurrency, rejection propagation, invalid limit.
+  - [tests/lib/piperTTS.test.ts](tests/lib/piperTTS.test.ts) — fakes the piper binary with a shell script, asserts stdin piping, args (length_scale / noise_scale), missing-binary + missing-voice + non-zero-exit errors.
+  - [tests/lib/huggingFaceTTS.test.ts](tests/lib/huggingFaceTTS.test.ts) — auth header, payload shape, error mapping (kept for when HF TTS comes back).
+  - [tests/services/voiceService.test.ts](tests/services/voiceService.test.ts) — chunk → synthesize → combine pipeline with stubbed TTS client + stub combiner; cache hit on second call; per-voice cache key isolation; combiner failure propagation; default voice resolution.
+  - [tests/lib/ffmpeg.test.ts](tests/lib/ffmpeg.test.ts) — exercises the **real** bundled ffmpeg binary: synthesizes two tones with `lavfi`, concatenates them with silence padding, asserts measured duration.
+
+## Video composition (Phase 6)
+
+- [src/lib/jobQueue.ts](src/lib/jobQueue.ts): in-process FIFO with `concurrency: 1` default. `enqueue(label, fn)` resolves with the job's return value, `drain()` resolves once idle. v1 only — Phase 11 swaps in BullMQ + Redis for crash safety.
+- [src/lib/subtitles.ts](src/lib/subtitles.ts): `scriptToCues(script, durationSeconds)` splits on sentences (then commas, then hard slice for over-long tokens) and allocates time proportional to character count. `cuesToSrt`/`writeSrt` emit standard `HH:MM:SS,mmm` SRT. Forced alignment (whisperX) is the Phase 11 follow-up.
+- [src/lib/backgrounds.ts](src/lib/backgrounds.ts): `listBackgrounds(rootDir?)` scans `STORAGE_ROOT/backgrounds/` for `.mp4|.mov|.mkv|.webm`. `pickBackground({ preferred?, seed?, rootDir? })` chooses a clip — substring-preferred match wins, otherwise FNV-1a hash of `seed` mods over the list (stable per-video pick), otherwise random. Throws `AppError(503, 'no_backgrounds')` if the dir is empty.
+- [src/lib/videoCompose.ts](src/lib/videoCompose.ts): `composeVideo({ backgroundPath, voiceoverPath, subtitlesPath?, outputPath, thumbnailPath, durationSeconds, ... })`. Single ffmpeg invocation:
+  - Filtergraph: `[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,subtitles='…'[v]; [0:a]aresample=44100,volume=0.1[bga]; [1:a]aresample=44100[vo]; [vo][bga]amix=duration=first[a]`.
+  - Output: `libx264 yuv420p preset=veryfast crf=20`, AAC 160k audio, `+faststart`. 9:16 by default; configurable.
+  - Loops short backgrounds via `-stream_loop -1` when `ffprobeDuration(bg) < durationSeconds`.
+  - Thumbnail: separate `ffmpeg -ss 1 -i <out> -frames:v 1` (or 0 if duration < 1.5s).
+  - Burns subtitles via the `subtitles` filter when `subtitlesPath` is given. SRT path is escaped (`'`, `\`, `:`) for libass.
+- [src/services/videoComposeService.ts](src/services/videoComposeService.ts): `createVideoComposeService({ queue?, pickBackground?, composeVideo? })` with two entry points:
+  - `enqueue(input)` — pushes onto the singleton 1-concurrency queue, resolves when the job completes.
+  - `runNow(input)` — bypass queue, run inline. Used by tests and (eventually) admin-publish flows that want immediate feedback.
+  - Each run: load `Video` doc → mark `processing` → write SRT → pick bg (seeded by `videoId`) → call composer → write assets + duration → mark `ready`. On error: mark `failed`, append error to `processingLogs`, rethrow as `AppError`.
+- Background clip storage convention: `STORAGE_ROOT/backgrounds/<name>.mp4`. Per-video output: `STORAGE_ROOT/videos/<videoId>/{final.mp4, thumb.jpg, subtitles.srt}`. Drop hand-curated parkour/Subway Surfers loops there to seed the library.
+- Tests: pure-unit suites for jobQueue (5), subtitles (6), backgrounds (4); real-ffmpeg integration for compose (3 — vertical 1080×1920, loop short bg, burn subs); service e2e (3 — happy path with stub compose, failure path marks `failed`, queue serializes).
 
 ## AI script generation (Phase 4)
 
@@ -129,4 +178,6 @@ curl http://localhost:4000/healthz  # → { data: { status: 'ok', mongo: { statu
 Phase 1 complete: skeleton + models + indexes + `/healthz` + integration tests.
 Phase 2 complete: auth endpoints, rotating refresh tokens with theft detection, rate limiting, integration tests covering the full flow.
 Phase 3 complete: multipart + inline upload pipeline, txt/md/pdf/docx extractors, local FS storage with S3-shaped driver, list/get/delete endpoints. Wired into Phase 4 via `scriptService.generateFromSource`.
-Phase 4 complete: HF chat client, script-generator service with retry/validation, prompt templates, mocked unit tests. Phase 5 (TTS voice synthesis) is next — see [../../implementation_plan.md](../../implementation_plan.md).
+Phase 4 complete: HF chat client, script-generator service with retry/validation, prompt templates, mocked unit tests.
+Phase 5 complete: piper TTS client (default), HF TTS client (alt impl), chunker, pLimit concurrency, ffmpeg combiner (bundled binary, no system ffmpeg required), voice registry, content-hash cache, real-binary integration test.
+Phase 6 complete: in-process job queue, subtitle generator (sentence-proportional SRT), background clip picker, ffmpeg composer (1080×1920, audio mix at 10%, burned subs, JPEG thumbnail), service that walks the Video document through `pending → processing → ready/failed`. Real-ffmpeg integration tests cover crop, loop, and burn-in. Phase 7a (admin generation + publish API) is next — see [../../implementation_plan.md](../../implementation_plan.md).

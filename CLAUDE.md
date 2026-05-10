@@ -2,6 +2,21 @@
 
 Guidance for Claude Code working in this repository. Keep edits minimal, follow the conventions here, and prefer extending existing patterns over adding new ones.
 
+## Product shape (read this first)
+
+The app is a **social-media-style learning feed** with two distinct content sources:
+
+1. **Admin-published content** — primary product surface. Admins (the founder, plus any LLM agents granted admin role) publish videos to a free, public feed organized by topic. **No login required to consume.** This is what new visitors see on day one.
+2. **User-generated content** — signed-in users can paste their own material and generate **private** videos. **Gated by `User.entitlements`** (free trial credits or `plan: 'pro'`). The exact billing shape (subscription vs. credit packs) is settled in Phase 10.5; the data model already supports either.
+
+Same generation pipeline (source → script → voice → video) feeds both. Difference is who can publish to the public feed and whether the call is free.
+
+### Roles and visibility
+
+- `User.role: 'admin' | 'user'` — only admins can publish to the public feed. Bootstrap via `ADMIN_EMAILS` env var (comma-separated). Anyone registering with a listed email auto-promotes at signup.
+- `User.entitlements: { plan, generationsRemaining, currentPeriodEnd? }` — gates user generation. Stub now, Stripe later.
+- `Video.visibility: 'public' | 'private'` + `publishedAt` — public videos live in the feed; private belong to the owner. **Phase 7a (admin generation)** comes before **Phase 7b (user generation)** because the public feed is the primary surface.
+
 ## Project shape
 
 Monorepo using **npm workspaces**. Top-level layout:

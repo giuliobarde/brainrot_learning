@@ -7,9 +7,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createApp } from '../src/app';
 import type { ChatResponse, HuggingFaceClient } from '../src/lib/huggingFace';
+import { createLocalStorage } from '../src/lib/storage';
 import { createScriptService } from '../src/services/scriptService';
 import { createSourceMaterialService } from '../src/services/sourceMaterialService';
-import { createLocalStorage } from '../src/lib/storage';
 
 let userCounter = 0;
 function nextUser() {

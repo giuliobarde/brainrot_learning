@@ -1,12 +1,19 @@
 import type { FilterQuery, Types } from 'mongoose';
 
-import { UserModel, type UserDoc } from '../models/User';
+import {
+  UserModel,
+  type UserDoc,
+  type UserEntitlementsSubdoc,
+  type UserRole,
+} from '../models/User';
 
 export interface CreateUserInput {
   email: string;
   passwordHash: string;
   displayName: string;
   avatarUrl?: string;
+  role?: UserRole;
+  entitlements?: UserEntitlementsSubdoc;
 }
 
 export const userRepository = {

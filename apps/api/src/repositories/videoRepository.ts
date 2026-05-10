@@ -55,6 +55,16 @@ export const videoRepository = {
       { new: true },
     ).exec();
   },
+  setStatus(
+    id: string | Types.ObjectId,
+    status: VideoStatus,
+    extra: Partial<Pick<VideoDoc, 'durationSeconds'>> = {},
+  ): Promise<VideoDoc | null> {
+    return VideoModel.findByIdAndUpdate(id, { status, ...extra }, { new: true }).exec();
+  },
+  setAssets(id: string | Types.ObjectId, assets: VideoAssetsSubdoc): Promise<VideoDoc | null> {
+    return VideoModel.findByIdAndUpdate(id, { assets }, { new: true }).exec();
+  },
   list(filter: ListVideosFilter): Promise<VideoDoc[]> {
     const query: FilterQuery<VideoDoc> = { ownerId: filter.ownerId };
     if (filter.topicSlug) query.topicSlug = filter.topicSlug;

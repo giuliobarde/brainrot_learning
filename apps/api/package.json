@@ -17,6 +17,8 @@
   },
   "dependencies": {
     "@brainrot/shared": "*",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
     "argon2": "^0.44.0",
     "cors": "^2.8.6",
     "dotenv": "^16.4.5",

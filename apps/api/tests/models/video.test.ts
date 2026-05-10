@@ -74,10 +74,48 @@ describe('VideoModel', () => {
 
     expect(haveKey({ ownerId: 1, topicSlug: 1, createdAt: -1 })).toBe(true);
     expect(haveKey({ ownerId: 1, createdAt: -1 })).toBe(true);
+    expect(haveKey({ visibility: 1, topicSlug: 1, publishedAt: -1 })).toBe(true);
+    expect(haveKey({ visibility: 1, publishedAt: -1 })).toBe(true);
 
     const text = indexes.find((i) => i.name === 'video_text_index');
     expect(text).toBeDefined();
     expect(text?.weights).toMatchObject({ title: 5, description: 1, tags: 3 });
+  });
+
+  it('defaults visibility to private when not specified', async () => {
+    const v = await VideoModel.create({
+      ownerId: new Types.ObjectId(),
+      topic: 'X',
+      topicSlug: 'x',
+      title: 'private draft',
+    });
+    expect(v.visibility).toBe('private');
+    expect(v.publishedAt).toBeUndefined();
+  });
+
+  it('accepts public visibility with publishedAt', async () => {
+    const v = await VideoModel.create({
+      ownerId: new Types.ObjectId(),
+      topic: 'Y',
+      topicSlug: 'y',
+      title: 'admin published',
+      visibility: 'public',
+      publishedAt: new Date(),
+    });
+    expect(v.visibility).toBe('public');
+    expect(v.publishedAt).toBeInstanceOf(Date);
+  });
+
+  it('rejects invalid visibility values', async () => {
+    await expect(
+      VideoModel.create({
+        ownerId: new Types.ObjectId(),
+        topic: 'Z',
+        topicSlug: 'z',
+        title: 'bad',
+        visibility: 'world' as never,
+      }),
+    ).rejects.toThrow();
   });
 
   it('rejects invalid status values', async () => {
