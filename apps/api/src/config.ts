@@ -28,6 +28,8 @@ const ConfigSchema = z.object({
   huggingFaceToken: z.string().default(''),
   storageRoot: z.string().default('./storage'),
   logLevel: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  adminEmails: z.array(z.string().email()).default([]),
+  freeTrialGenerations: z.coerce.number().int().nonnegative().default(3),
 });
 
 export type AppConfig = z.infer<typeof ConfigSchema>;
@@ -42,6 +44,11 @@ function loadConfig(): AppConfig {
     huggingFaceToken: process.env.HUGGINGFACE_TOKEN,
     storageRoot: process.env.STORAGE_ROOT,
     logLevel: process.env.LOG_LEVEL,
+    adminEmails: (process.env.ADMIN_EMAILS ?? '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
+    freeTrialGenerations: process.env.FREE_TRIAL_GENERATIONS,
   });
 
   if (!parsed.success) {

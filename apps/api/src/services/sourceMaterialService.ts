@@ -1,7 +1,7 @@
 import type { Types } from 'mongoose';
 
-import { extract, type SourceMaterialKind } from '../lib/extractors';
 import { AppError, NotFound } from '../lib/errors';
+import { extract, type SourceMaterialKind } from '../lib/extractors';
 import { createLocalStorage, type StorageDriver } from '../lib/storage';
 import type { SourceMaterialDoc } from '../models/SourceMaterial';
 import { sourceMaterialRepository } from '../repositories/sourceMaterialRepository';

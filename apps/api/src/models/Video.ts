@@ -1,6 +1,7 @@
 import { Schema, model, type Document, type Model, type Types } from 'mongoose';
 
 export type VideoStatus = 'pending' | 'processing' | 'ready' | 'failed';
+export type VideoVisibility = 'public' | 'private';
 
 export interface VideoAssetsSubdoc {
   voiceoverUrl?: string;
@@ -19,6 +20,8 @@ export interface VideoDoc extends Document<Types.ObjectId> {
   sourceMaterialId?: Types.ObjectId;
   assets: VideoAssetsSubdoc;
   status: VideoStatus;
+  visibility: VideoVisibility;
+  publishedAt?: Date;
   durationSeconds?: number;
   processingLogs: string[];
   createdAt: Date;
@@ -52,6 +55,14 @@ const VideoSchema = new Schema<VideoDoc>(
       default: 'pending',
       index: true,
     },
+    visibility: {
+      type: String,
+      required: true,
+      enum: ['public', 'private'],
+      default: 'private',
+      index: true,
+    },
+    publishedAt: { type: Date },
     durationSeconds: { type: Number, min: 0 },
     processingLogs: { type: [String], default: [] },
   },
@@ -60,6 +71,10 @@ const VideoSchema = new Schema<VideoDoc>(
 
 VideoSchema.index({ ownerId: 1, topicSlug: 1, createdAt: -1 });
 VideoSchema.index({ ownerId: 1, createdAt: -1 });
+// Public feed: by topic, newest first.
+VideoSchema.index({ visibility: 1, topicSlug: 1, publishedAt: -1 });
+// Public feed: global, newest first.
+VideoSchema.index({ visibility: 1, publishedAt: -1 });
 VideoSchema.index(
   { title: 'text', description: 'text', tags: 'text' },
   { name: 'video_text_index', weights: { title: 5, tags: 3, description: 1 } },

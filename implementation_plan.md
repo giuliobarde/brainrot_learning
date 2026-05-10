@@ -1,6 +1,25 @@
 # Brainrot Learning — Implementation Plan
 
-A cross-platform mobile application that converts user-supplied study material (transcripts, notes, lecture summaries) into short, engaging "brainrot-style" educational videos: an AI-narrated voiceover layered over satisfying background gameplay footage (Minecraft parkour, Subway Surfers, etc.), with subtitles and topic metadata. The app surfaces these generated videos in an Instagram-style feed organized by topic, styled according to Apple's Liquid Glass design language.
+A cross-platform mobile application that delivers short, engaging "brainrot-style" educational videos: an AI-narrated voiceover layered over satisfying background gameplay footage (Minecraft parkour, Subway Surfers, etc.), with subtitles and topic metadata. The app surfaces these videos in an Instagram-style feed organized by topic, styled according to Apple's Liquid Glass design language.
+
+## Product shape
+
+The app is a **social-media-style learning feed**, with two distinct content sources:
+
+1. **Admin-published content** — the primary product surface. Admins (the founder, plus any LLM agents the founder grants admin role to) generate and publish videos to a public feed organized by topic. **Free for everyone, no login required to consume.** This is the content most users will ever see.
+2. **User-generated content** — signed-in users can paste their own study material and generate private videos against their own library. **Gated behind a subscription** (with a small free trial of N generations on signup) so the inference costs stay sustainable. The exact billing shape (monthly subscription vs. à-la-carte credit packs) is decided in Phase 11.5; the data model already carries a `User.entitlements` field that supports either.
+
+The same generation pipeline (source text → script → voiceover → composed video) powers both surfaces. The difference is who can publish to the public feed and how generation is paid for.
+
+## Roles and entitlements
+
+- `User.role: 'admin' | 'user'` — admins can publish to the public feed and bypass entitlement checks. Bootstrap via `ADMIN_EMAILS` env var (comma-separated allow-list); anyone registering with one of those emails is auto-promoted at signup. Avoids manual DB poking on deploy.
+- `User.entitlements: { plan: 'free' | 'pro', generationsRemaining }` — a stub that captures both the trial-credits model and the subscription model. Phase 11.5 wires it to Stripe.
+- `Video.visibility: 'public' | 'private'` plus `publishedAt` — public videos appear in the feed (must be admin-owned for v1); private videos belong to the owner only.
+
+## Build order (revised)
+
+Phases 0 → 5 stand up the platform and the generation primitives (no UI consumers yet — pure backend + auth screens). Phases 6 → 7a wire the admin path end-to-end so the **free public feed launches first** as the public face of the app. Phase 8 builds the consumption UI (feed-first, library second). Phase 7b unlocks paid user generation. Phase 11.5 adds billing. Phases 9 → 11 polish and harden.
 
 This document breaks the project into discrete, sequential phases. Each phase includes its goals, key deliverables, technical decisions, and validation criteria. Phases are designed to be roughly self-contained so that each one ends in a working, testable slice of the product.
 
@@ -149,40 +168,65 @@ This document breaks the project into discrete, sequential phases. Each phase in
 
 ---
 
-## Phase 7 — Generation API and Mobile Generation Flow
+## Phase 7a — Admin Generation and Public Publishing
 
-**Goal:** Wire the entire pipeline up to the mobile app so a user can tap a button and watch a video be created.
+**Goal:** Let admins generate videos from arbitrary source material and publish them to the public feed. This is the **primary** generation flow because it produces the content that the app's free public feed shows on day one.
 
 **Deliverables:**
 
-1. A `POST /videos/generate` endpoint that takes either a `sourceMaterialId` or inline text, optional user hints, and enqueues a generation job. It immediately returns the new `Video` document in `pending` state.
-2. A `GET /videos/:id` endpoint plus a server-sent events (or polling) channel for live status updates.
-3. Mobile-side "Generate" screen:
-   - Lets the user pick previously uploaded material or paste new text.
-   - Optional fields for topic hint, tone, length preset.
-   - Shows an animated progress state with the current pipeline stage (writing script → synthesizing voice → assembling video).
-   - On success, transitions to a preview screen with playback, metadata, and a "Save" / "Discard" choice. (All generations are auto-saved as per the spec; "Discard" simply deletes the persisted video.)
+1. A `POST /admin/videos/generate` endpoint (gated by `requireAuth + requireAdmin`) that takes `sourceMaterialId` or inline text, optional hints (topic, tone, length), and enqueues a generation job. Returns the new `Video` document with `visibility: 'private'`, `status: 'pending'`. Admins bypass any entitlement checks.
+2. A `POST /admin/videos/:id/publish` endpoint that flips a `ready` video to `visibility: 'public'`, stamps `publishedAt`, and ensures the `Topic` collection has a normalized entry for `topicSlug`. A `POST /admin/videos/:id/unpublish` reverses this.
+3. A `GET /videos/:id` endpoint plus a server-sent-events (or polling) channel for live status updates. Public videos are readable without auth; private videos require the owner's bearer token.
+4. Mobile-side **Admin Studio** screen (visible only when `user.role === 'admin'`):
+   - Pick previously uploaded material or paste new text.
+   - Optional fields for topic, tone, length preset.
+   - Animated progress state for the current pipeline stage (writing script → synthesizing voice → assembling video).
+   - On success: preview, then **Publish to feed** / **Save private** / **Discard** actions.
 
-**Validation:** From a clean app install, a user can sign up, paste study notes, generate a video, and watch it back inside the app within a single session.
+**Validation:** From a clean app install, an admin signs up (with their email on `ADMIN_EMAILS`), pastes a lecture transcript, generates a video, publishes it, signs out completely, opens the app as a logged-out visitor, and sees the video in the public feed.
 
 ---
 
-## Phase 8 — Video Library and Topic Organization
+## Phase 7b — User Generation with Entitlement Gate
 
-**Goal:** Build the home experience — an Instagram-style feed of the user's generated videos, organized by topic, styled with Liquid Glass.
+**Goal:** Let signed-in non-admin users generate private videos from their own material, gated by their `entitlements`. Surface upgrade prompts at the right moments without yet implementing payments.
 
 **Deliverables:**
 
-1. A `GET /videos` endpoint that supports pagination, filtering by topic, free-text search across `title`, `description`, and `tags`, and sorting by recency.
-2. A `GET /topics` endpoint that returns only those topics for which the current user has at least one video, including counts and the most recent thumbnail per topic (used for cover art).
-3. Mobile-side **Home / Library** screen:
-   - A vertical scroll of "topic sections." Each section appears only when the user has at least one video in that topic.
-   - Each section header shows the topic name with a Liquid Glass capsule, a count, and a subtle accent color tied to the topic.
-   - Within a section, a horizontally scrollable carousel of video thumbnails with title and description preview.
-4. Mobile-side **Topic Detail** screen: a vertical, full-bleed feed (Instagram Reels-style) of every video in that topic with snap-to-video paging, autoplay, and gestures (swipe down to dismiss, double-tap to like, long-press for actions).
-5. Mobile-side **Video Detail / Manage** sheet: title, description, tags (editable), generated metadata, share/export, and delete.
+1. A `POST /videos/generate` endpoint mirroring the admin endpoint but for `role: 'user'`. Before enqueuing:
+   - If `entitlements.plan === 'pro'` (active subscription): allow.
+   - If `entitlements.generationsRemaining > 0`: allow and decrement.
+   - Otherwise: respond with `402 Payment Required` and an `entitlement_required` error code carrying enough detail for the client to render the right paywall.
+2. The resulting `Video` is always `visibility: 'private'`. Users cannot publish to the public feed (only admins can).
+3. Mobile-side **Generate** screen for regular users:
+   - Same generation UX as the admin Studio, minus the publish action.
+   - On `402`, route the user to a placeholder paywall screen that explains what's coming. (Real billing arrives in Phase 11.5.)
+4. **My library** continues to show only the user's own private generations (Phase 8 covers the consumption side).
 
-**Validation:** Create videos in three different topics, confirm three sections appear in the order the spec requires, confirm an empty topic never appears, and confirm search returns correct results across `title`, `description`, and `tags`.
+**Validation:** A regular user with `generationsRemaining: 3` can generate exactly three videos, and the fourth attempt returns 402. A user marked `plan: 'pro'` (set manually in dev) generates without limit. None of the user's videos appear in the public feed.
+
+---
+
+## Phase 8 — Public Feed (Home) and Personal Library
+
+**Goal:** Build the consumption experience — a public feed organized by topic that anyone can browse without an account, plus a "My library" view for signed-in users to see their own private generations.
+
+This phase deliberately puts the **public feed first**: it's what new users land on, what makes the app feel populated, and what justifies the rest of the surface.
+
+**Deliverables:**
+
+1. A `GET /feed` endpoint (no auth required) that returns paginated public videos (`visibility: 'public'`), filterable by topic and searchable across `title`, `description`, and `tags`. Sorted by `publishedAt` desc.
+2. A `GET /topics` endpoint returning only topics that have at least one published video, with counts and the most recent thumbnail per topic (used for cover art).
+3. A `GET /videos/mine` endpoint (auth required) returning the caller's own videos (private + any they own that happen to be public).
+4. Mobile-side **Home / Public Feed**:
+   - Visible to logged-out and logged-in users alike. No login wall.
+   - Vertical scroll of "topic sections" backed by `/topics` + `/feed?topic=...`. Each section header shows the topic with a Liquid Glass capsule, a count, and a subtle accent color.
+   - Within a section, a horizontally scrollable carousel of video thumbnails.
+5. Mobile-side **Topic Detail**: vertical full-bleed feed (Reels-style) of every public video in the topic. Snap-to-video paging, autoplay, swipe-to-dismiss, double-tap to like.
+6. Mobile-side **My Library** tab (signed-in users only): the user's own private generations. Same topic-grouped layout, plus a per-video manage sheet (title/description/tags edit, share/export, delete).
+7. Mobile-side onboarding gate: logged-out users browsing the public feed see a _Sign in_ affordance only when they tap an action that requires an account (e.g., generate, save, like). The feed itself never blocks.
+
+**Validation:** Open the app fresh (no account), browse the public feed across at least three topics. Sign in, confirm the public feed still works and "My library" appears as a separate tab. Confirm an empty topic never shows up. Confirm a user's private videos never appear in the public feed.
 
 ---
 
@@ -225,6 +269,25 @@ This document breaks the project into discrete, sequential phases. Each phase in
 
 ---
 
+## Phase 10.5 — Payments and Entitlements
+
+**Goal:** Replace the stub `entitlements` field with a real billing integration so user generation can be sold. Decision point on subscription vs. à-la-carte happens here, informed by the data the public feed has been collecting.
+
+**Deliverables:**
+
+1. **Provider:** Stripe (default) or RevenueCat (if iOS in-app purchase becomes a hard requirement). Stripe Checkout for web/mobile out-of-band, webhook to update `User.entitlements`. RevenueCat if Apple's App Store rules force it.
+2. **Pricing:** start with a single subscription tier (e.g., **Pro — $4.99/mo for unlimited generations**). The data model also supports per-upload credit packs; ship those only if subscriber data shows demand.
+3. **Endpoints:**
+   - `POST /billing/checkout` — creates a Stripe Checkout session for the current user, returns a redirect URL.
+   - `POST /billing/webhook` — Stripe webhook handler that updates `User.entitlements.plan` and `currentPeriodEnd`.
+   - `POST /billing/portal` — creates a Stripe Customer Portal session for managing the subscription.
+4. **Mobile-side paywall**: replace the Phase 7b placeholder with a real screen that opens the checkout URL in a `WebBrowser` (or, on iOS, an in-app purchase sheet via RevenueCat). After checkout, return to the app and refresh `/auth/me` to pick up the new entitlements.
+5. **Free trial:** keep the `FREE_TRIAL_GENERATIONS` knob from the auth bootstrap; the trial is the conversion funnel, not a separate plan.
+
+**Validation:** A user signs up, exhausts their trial, hits the paywall, completes a Stripe Checkout in test mode, returns to the app, and successfully generates a video. Cancelling the subscription downgrades them at `currentPeriodEnd`.
+
+---
+
 ## Phase 11 — Hardening, Observability, and Deployment
 
 **Goal:** Make the system production-ready: observable, resilient to AI service outages, and deployable.
@@ -246,13 +309,16 @@ This document breaks the project into discrete, sequential phases. Each phase in
 
 These are not phases of their own but should be addressed continuously:
 
-- **Privacy & data ownership:** Generated videos and uploaded source material belong to the user; expose a one-click "delete account and all data" flow before any public release.
-- **Cost management:** Free Hugging Face inference is rate-limited; the app should queue politely, surface "your video is in line" status, and never silently fail.
-- **Accessibility:** All Liquid Glass components must meet contrast requirements (text content rendered on opaque or high-contrast layers above the blur), support Dynamic Type, and expose proper accessibility labels for screen readers.
-- **Content safety:** Eventually run user-supplied source material through a basic moderation pass before generation, both to protect the model providers' terms of service and to keep generated narration safe.
+- **Privacy & data ownership:** Private videos and uploaded source material belong to the user; expose a one-click "delete account and all data" flow before any public release. Public videos remain on the feed even after the publishing admin's account is deleted (they belong to the platform).
+- **Cost management:** Inference is the dominant marginal cost. Admin generation is unmetered; user generation must always check `entitlements` before enqueuing. The system should queue politely, surface "your video is in line" status, and never silently fail.
+- **Accessibility:** All Liquid Glass components must meet contrast requirements (text content rendered on opaque or high-contrast layers above the blur), support Dynamic Type, and expose proper accessibility labels for screen readers. The public feed is the most-trafficked surface — accessibility there matters most.
+- **Content safety:** Run user-supplied source material through a moderation pass before generation, both to protect the model providers' terms of service and to keep generated narration safe. Public-feed publishing additionally requires admin review; the publish endpoint is the chokepoint.
+- **Subscription model:** the `User.entitlements` shape is deliberately small. It accommodates monthly subscription (`plan: 'pro'` + `currentPeriodEnd`) and one-off credit packs (`generationsRemaining`) without code changes, so the billing decision in Phase 10.5 is a config decision, not a re-architecture.
 
 ---
 
 ## Suggested Build Order Recap
 
-Phases 0 → 2 establish the platform. Phases 3 → 7 deliver the core generation pipeline as the smallest possible vertical slice. Phases 8 → 10 turn that slice into a real product. Phase 11 prepares it for users. Each phase ends in something demonstrable, which keeps motivation high and surfaces architectural mistakes early.
+Phases 0 → 2 establish the platform (workspaces + tooling, backend skeleton, auth with role + entitlements). Phases 3 → 5 build the generation primitives — text extraction, script generation, voice synthesis — none of which are user-facing on their own. Phases 6 → 7a turn those primitives into the **admin-published public feed**, which is the first thing a real visitor will see. Phase 8 builds the consumption UI on top of that feed (logged-out browse, logged-in library). Phase 7b unlocks paid user generation behind a stub paywall. Phases 9 → 10 polish design and search. Phase 10.5 swaps the stub for real Stripe billing once you're confident demand is there. Phase 11 hardens for production.
+
+The reason the public feed comes before user generation is product, not engineering: a brand-new visitor needs something to watch on day one, and admin-published content is the only path that doesn't depend on either an LLM token they don't have or a billing relationship that doesn't yet exist. Each phase still ends in something demonstrable, which keeps motivation high and surfaces architectural mistakes early.

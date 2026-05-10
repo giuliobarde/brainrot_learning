@@ -4,8 +4,8 @@ import { z } from 'zod';
 import { BadRequest } from '../lib/errors';
 import type { AuthedRequest } from '../middleware/requireAuth';
 import { getValidated } from '../middleware/validate';
-import { createSourceMaterialService } from '../services/sourceMaterialService';
 import { toPublicSourceMaterial } from '../services/sourceMaterialMappers';
+import { createSourceMaterialService } from '../services/sourceMaterialService';
 
 const InlineBody = z.object({
   text: z.string().min(1).max(200_000),
