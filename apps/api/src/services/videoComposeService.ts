@@ -80,7 +80,10 @@ export function createVideoComposeService(deps: VideoComposeServiceDeps = {}) {
         durationSeconds: input.voiceoverDurationSeconds,
       });
 
-      const prior = video.assets?.toObject?.() ?? {};
+      const prior =
+        (video.assets as unknown as { toObject?: () => Record<string, unknown> })?.toObject?.() ??
+        (video.assets as Record<string, unknown>) ??
+        {};
       await videoRepository.setAssets(video._id, {
         ...prior,
         voiceoverUrl: input.voiceoverPath,

@@ -48,6 +48,20 @@ export const videoRepository = {
   delete(id: string | Types.ObjectId): Promise<VideoDoc | null> {
     return VideoModel.findByIdAndDelete(id).exec();
   },
+  publish(id: string | Types.ObjectId, publishedAt: Date = new Date()): Promise<VideoDoc | null> {
+    return VideoModel.findByIdAndUpdate(
+      id,
+      { visibility: 'public', publishedAt },
+      { new: true },
+    ).exec();
+  },
+  unpublish(id: string | Types.ObjectId): Promise<VideoDoc | null> {
+    return VideoModel.findByIdAndUpdate(
+      id,
+      { $set: { visibility: 'private' }, $unset: { publishedAt: '' } },
+      { new: true },
+    ).exec();
+  },
   appendLog(id: string | Types.ObjectId, line: string): Promise<VideoDoc | null> {
     return VideoModel.findByIdAndUpdate(
       id,

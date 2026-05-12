@@ -5,10 +5,10 @@ import path from 'node:path';
 import { Types } from 'mongoose';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
+import { createJobQueue } from '../../src/lib/jobQueue';
 import type { ComposeResult } from '../../src/lib/videoCompose';
 import { VideoModel } from '../../src/models/Video';
 import { createVideoComposeService } from '../../src/services/videoComposeService';
-import { createJobQueue } from '../../src/lib/jobQueue';
 
 let storageRoot: string;
 

@@ -78,8 +78,44 @@ if [[ "$NODE_MAJOR" -lt 20 ]]; then
   fail "Node $NODE_MAJOR detected. This project requires Node 20+."
 fi
 
+start_docker_daemon() {
+  case "$(uname)" in
+    Darwin)
+      if [[ -d "/Applications/Docker.app" ]]; then
+        log "Docker daemon not running — launching Docker Desktop…"
+        open -ga Docker
+      else
+        fail "Docker daemon is not running and Docker Desktop is not installed at /Applications/Docker.app."
+      fi
+      ;;
+    Linux)
+      if command -v systemctl >/dev/null 2>&1; then
+        log "Docker daemon not running — attempting 'sudo systemctl start docker'…"
+        sudo systemctl start docker || fail "Failed to start docker via systemctl."
+      else
+        fail "Docker daemon is not running. Start it and retry."
+      fi
+      ;;
+    *)
+      fail "Docker daemon is not running. Start it and retry."
+      ;;
+  esac
+
+  log "Waiting for Docker daemon to come up (up to 60s)…"
+  local attempts=0
+  local max_attempts=30
+  until docker info >/dev/null 2>&1; do
+    attempts=$((attempts + 1))
+    if [[ "$attempts" -ge "$max_attempts" ]]; then
+      fail "Docker daemon did not come up within $((max_attempts * 2))s."
+    fi
+    sleep 2
+  done
+  ok "Docker daemon is up."
+}
+
 if ! docker info >/dev/null 2>&1; then
-  fail "Docker daemon is not running. Start Docker Desktop and retry."
+  start_docker_daemon
 fi
 
 # Pick `docker compose` (v2) over legacy `docker-compose`.

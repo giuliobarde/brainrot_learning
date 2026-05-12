@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 
 import { Forbidden, Unauthorized } from '../lib/errors';
 import { userRepository } from '../repositories/userRepository';
+
 import type { AuthedRequest } from './requireAuth';
 
 export interface AdminRequest extends AuthedRequest {

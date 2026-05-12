@@ -1,0 +1,9 @@
+{
+  "ignore_dirs": [
+    "node_modules",
+    ".git",
+    "apps/api/storage",
+    "apps/api/.piper",
+    "storage"
+  ]
+}

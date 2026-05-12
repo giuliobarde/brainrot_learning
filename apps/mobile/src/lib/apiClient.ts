@@ -9,13 +9,62 @@ export interface ApiTokens {
   expiresInSeconds: number;
 }
 
+export type ApiUserRole = 'admin' | 'user';
+export type ApiSubscriptionPlan = 'free' | 'pro';
+
+export interface ApiUserEntitlements {
+  plan: ApiSubscriptionPlan;
+  generationsRemaining: number;
+  currentPeriodEnd?: string;
+}
+
 export interface ApiUser {
   id: string;
   email: string;
   displayName: string;
   avatarUrl?: string;
+  role: ApiUserRole;
+  entitlements: ApiUserEntitlements;
   createdAt: string;
   updatedAt: string;
+}
+
+export type ApiVideoStatus = 'pending' | 'processing' | 'ready' | 'failed';
+export type ApiVideoVisibility = 'public' | 'private';
+
+export interface ApiVideoAssets {
+  voiceoverUrl?: string;
+  finalVideoUrl?: string;
+  thumbnailUrl?: string;
+  subtitlesUrl?: string;
+}
+
+export interface ApiVideo {
+  id: string;
+  ownerId: string;
+  topic: string;
+  topicSlug: string;
+  title: string;
+  description: string;
+  tags: string[];
+  sourceMaterialId?: string;
+  assets: ApiVideoAssets;
+  status: ApiVideoStatus;
+  visibility: ApiVideoVisibility;
+  publishedAt?: string;
+  durationSeconds?: number;
+  processingLogs?: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminGenerateInput {
+  sourceMaterialId?: string;
+  sourceText?: string;
+  topicHint?: string;
+  tone?: 'casual' | 'energetic' | 'serious';
+  length?: 'short' | 'medium' | 'long';
+  preferredBackground?: string;
 }
 
 export interface ApiErrorBody {
@@ -235,5 +284,31 @@ export const api = {
   },
   async deleteSourceMaterial(id: string): Promise<void> {
     await rawRequest<void>(`/source-material/${id}`, { method: 'DELETE', auth: true });
+  },
+
+  async generateAdminVideo(input: AdminGenerateInput): Promise<{ video: ApiVideo }> {
+    return rawRequest<{ video: ApiVideo }>('/admin/videos/generate', {
+      method: 'POST',
+      body: input,
+      auth: true,
+    });
+  },
+  async publishVideo(id: string): Promise<{ video: ApiVideo }> {
+    return rawRequest<{ video: ApiVideo }>(`/admin/videos/${id}/publish`, {
+      method: 'POST',
+      auth: true,
+    });
+  },
+  async unpublishVideo(id: string): Promise<{ video: ApiVideo }> {
+    return rawRequest<{ video: ApiVideo }>(`/admin/videos/${id}/unpublish`, {
+      method: 'POST',
+      auth: true,
+    });
+  },
+  async getVideo(id: string): Promise<{ video: ApiVideo }> {
+    return rawRequest<{ video: ApiVideo }>(`/videos/${id}`, { auth: true });
+  },
+  async deleteVideo(id: string): Promise<void> {
+    await rawRequest<void>(`/videos/${id}`, { method: 'DELETE', auth: true });
   },
 };

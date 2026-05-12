@@ -45,8 +45,18 @@ export default function Home() {
       </View>
 
       <View style={styles.actions}>
-        <Pressable style={styles.primary} onPress={() => router.push('/upload')}>
-          <Text style={styles.primaryText}>Upload material</Text>
+        {user?.role === 'admin' ? (
+          <Pressable style={styles.primary} onPress={() => router.push('/admin')}>
+            <Text style={styles.primaryText}>Admin Studio</Text>
+          </Pressable>
+        ) : null}
+        <Pressable
+          style={user?.role === 'admin' ? styles.secondary : styles.primary}
+          onPress={() => router.push('/upload')}
+        >
+          <Text style={user?.role === 'admin' ? styles.secondaryText : styles.primaryText}>
+            Upload material
+          </Text>
         </Pressable>
         <Pressable style={styles.secondary} onPress={() => router.push('/library')}>
           <Text style={styles.secondaryText}>My library</Text>
